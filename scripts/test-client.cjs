@@ -62,14 +62,14 @@ const fs = require("fs");
     ];
     const store = (() => {
       let state = {
-        current: { provider: "deepseek-official", model: "deepseek-v4-pro", reasoningEffort: "max" },
+        current: { provider: "example-vendor", model: "deepseek/deepseek-v4-pro", reasoningEffort: "max" },
         routable: null,
         groups: [{
-          id: "deepseek-official",
-          name: "DeepSeek",
+          id: "example-vendor",
+          name: "Example (modlens vision)",
           models: [
-            { id: "deepseek-v4-flash", name: "DeepSeek-V4-Flash", reasoning: { efforts, defaultEffort: "high" } },
-            { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro", reasoning: { efforts, defaultEffort: "high" } },
+            { id: "deepseek/deepseek-v4-flash", name: "DeepSeek-V4-Flash", reasoning: { efforts, defaultEffort: "high" } },
+            { id: "deepseek/deepseek-v4-pro", name: "DeepSeek-V4-Pro", reasoning: { efforts, defaultEffort: "high" } },
           ],
         }],
         failures: [], status: "ready", error: null,
@@ -110,19 +110,41 @@ const fs = require("fs");
           slots: {
             inject(name, factory) {
               slotCapture.name = name;
-              const result = factory();
-              slotCapture.options = result.options;
-              slotCapture.component = result.component;
-              return result;
+              // factory() sets up the vendor-gated manager and returns a
+              // disposer; the shadow registration happens inside via
+              // register() (synchronously) when the fixture's current provider
+              // is a target vendor.
+              slotCapture.disposer = factory();
+              return () => {
+                if (slotCapture.disposer != null) {
+                  const d = slotCapture.disposer;
+                  slotCapture.disposer = null;
+                  d();
+                }
+              };
             },
-            register(options, component) { return { options, component }; },
+            register(options, component) {
+              slotCapture.options = options;
+              slotCapture.component = component;
+              return () => {
+                slotCapture.disposals = (slotCapture.disposals ?? 0) + 1;
+              };
+            },
           },
           modelDirectories: { directoryFor: () => directory },
-          sessions: { subagentAddress: () => undefined },
+          sessions: {
+            subagentAddress: () => undefined,
+            list: {
+              subscribe() { return () => {}; },
+              getSnapshot() { return { current: "test-session" }; },
+            },
+          },
         });
       },
     };
-    exportsObj.apply(ctx);
+    // config-driven: target vendors come from the composition `config` (here
+    // explicitly supplied; omitting it falls back to the all-open defaults).
+    exportsObj.apply(ctx, { targetVendors: ["Example"], targetProviderIds: ["example-vendor"] });
 
     // ---- mount the captured component with the injected face ----
     const container = document.createElement("div");
@@ -135,7 +157,7 @@ const fs = require("fs");
       t,
     });
     ReactDOMClient.createRoot(container).render(element);
-    window.__LIANG_TEST__ = { calls, store };
+    window.__LIANG_TEST__ = { calls, store, slotCapture };
     return {
       name: slotCapture.name,
       options: { ...slotCapture.options, inject: undefined },
@@ -189,6 +211,21 @@ const fs = require("fs");
   console.log("select calls:", JSON.stringify(calls));
   const finalState = await page.evaluate(() => window.__LIANG_TEST__.store.getSnapshot().current);
   console.log("final current:", JSON.stringify(finalState));
+
+  // 4) vendor gate: switching the current model to a NON-target provider must
+  //    retire the shadow registration (dispose fires), so the stock selector
+  //    (priority 0) would render unchanged for other vendors.
+  const disposals = await page.evaluate(() => {
+    const env = window.__LIANG_TEST__;
+    env.store.update((s) => ({
+      ...s,
+      current: { provider: "deepseek-official", model: "deepseek-v4-pro", reasoningEffort: "max" },
+      groups: [{ id: "deepseek-official", name: "DeepSeek", models: s.groups[0].models }],
+    }));
+    return new Promise((resolve) => setTimeout(() => resolve(env.slotCapture.disposals ?? 0), 250));
+  });
+  console.log("non-target shadow disposals:", disposals);
+
   console.log("frame requests:", frameHits);
   console.log("page errors:", errs.slice(0, 6));
 

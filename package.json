@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-liang-calibrator",
-  "version": "1.0.0",
-  "description": "滑动变祖器 — the liang-intensity-calibrator as the DeepSeek Harness model + thinking-effort slider. Clicking the composer's model seat opens the 31-level calibrator directly; the six stages map 1:1 onto DeepSeek-V4-Flash/Pro × Off/High/Max.",
+  "version": "1.2.0",
+  "description": "滑动变祖器 — the liang-intensity-calibrator as the DeepSeek Harness model + thinking-effort slider. Clicking the composer's model seat opens the 31-level calibrator directly; the six stages map 1:1 onto DeepSeek-V4-Flash/Pro × Off/High/Max. Optional vendor gating: restrict the calibrator to chosen provider(s) via config — every other provider keeps the stock selector. The slider stays inside the current vendor — dragging never switches provider.",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
